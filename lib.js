@@ -9,7 +9,20 @@ let canvas_buffer = canvas_context.getImageData(
   canvas.height
 );
 
+Array.prototype.customFill = function (value, start = 0, end = this.length) {
+  var count = end - start;
+  if (count > 0 && count === Math.floor(count)) {
+    while (count--) this[start++] = value;
+  }
+  return this;
+};
+
 let canvas_pitch = canvas_buffer.width * 4;
+
+let translation = vec2d(0, 0);
+let scaling = vec2d(0, 0);
+let shader_function = undefined;
+let shader_inputs = [];
 
 function resize(size) {
   canvas.width = size.x;
@@ -56,12 +69,24 @@ function pixel(x, y, color) {
   canvas_buffer.data[offset++] = 255;
 }
 
-function clear() {
-  canvas_buffer.data.fill(255);
+function flush() {
+  canvas_buffer.data.fill(0);
+  shader_inputs = [];
 }
 
 function swap() {
   canvas_context.putImageData(canvas_buffer, 0, 0);
+
+  requestAnimationFrame(render);
+}
+
+function useShader(func) {
+  shader_function = func;
+  shader_inputs = [];
+}
+
+function shaderInputs(...inputs) {
+  shader_inputs = inputs;
 }
 
 function vec2d(x, y) {
@@ -96,7 +121,7 @@ function line(p0, p1, color) {
 
     let ys = _INTERNAL_INTERPOLATE(p0.x, p0.y, p1.x, p1.y);
     for (let x = p0.x; x <= p1.x; x++) {
-      PutPixel(x, ys[(x - p0.x) | 0], color);
+      pixel(translation.x + x, translation.y + ys[(x - p0.x) | 0], color);
     }
   } else {
     if (dy < 0) {
@@ -107,18 +132,95 @@ function line(p0, p1, color) {
 
     let xs = _INTERNAL_INTERPOLATE(p0.y, p0.x, p1.y, p1.x);
     for (let y = p0.y; y <= p1.y; y++) {
-      pixel(xs[(y - p0.y) | 0], y, color);
+      pixel(translation.x + xs[(y - p0.y) | 0], translation.y + y, color);
     }
   }
 }
 
+function mapTexture(aPos, texture) {
+  let plottedPos = vec2d(
+    Math.round(aPos.x * texture.width),
+    Math.round(aPos.y * texture.height)
+  );
+
+  let i = plottedPos.x * texture.width + plottedPos.y;
+  return rgb(
+    texture.data[i * 4],
+    texture.data[i * 4 + 1],
+    texture.data[i * 4 + 2]
+  );
+}
+
 function triangle(p0, p1, p2, color) {
+  p0.x *= scaling.x;
+  p0.y *= scaling.y;
+  p1.x *= scaling.x;
+  p1.y *= scaling.y;
+  p2.x *= scaling.x;
+  p2.y *= scaling.y;
+
   line(p0, p1, color);
   line(p1, p2, color);
   line(p0, p2, color);
 }
 
-function fillTriangle(p0, p1, p2, color) {
+function translate(p) {
+  translation = p;
+}
+
+function scale(s) {
+  scaling = s;
+}
+
+function loadTexture(imgElement, width = undefined, height = undefined) {
+  var textureCanvas = document.createElement("canvas");
+  var textureContext = textureCanvas.getContext("2d");
+
+  textureCanvas.width = width ? width : imgElement.width;
+  textureCanvas.height = height ? height : imgElement.height;
+
+  textureContext.translate(0, imgElement.width);
+  textureContext.rotate((-90 * Math.PI) / 180);
+  textureContext.translate(imgElement.width, 0);
+  textureContext.scale(-1, 1);
+
+  textureContext.drawImage(
+    imgElement,
+    0,
+    0,
+    textureCanvas.width,
+    textureCanvas.height
+  );
+
+  let data = textureContext.getImageData(
+    0,
+    0,
+    textureCanvas.width,
+    textureCanvas.height
+  );
+
+  return data;
+}
+
+function fillTriangle(p0, p1, p2) {
+  p0.x *= scaling.x;
+  p0.y *= scaling.y;
+  p1.x *= scaling.x;
+  p1.y *= scaling.y;
+  p2.x *= scaling.x;
+  p2.y *= scaling.y;
+
+  let maxX = 0;
+  let maxY = 0;
+
+  if (p0.x > maxX) maxX = p0.x;
+  if (p1.x > maxX) maxX = p1.x;
+  if (p2.x > maxX) maxX = p2.x;
+
+  if (p0.y > maxY) maxY = p0.y;
+  if (p1.y > maxY) maxY = p1.y;
+  if (p2.y > maxY) maxY = p2.y;
+
   if (p1.y < p0.y) {
     let swap = p0;
     p0 = p1;
@@ -154,7 +256,11 @@ function fillTriangle(p0, p1, p2, color) {
 
   for (let y = p0.y; y <= p2.y; y++) {
     for (let x = x_left[y - p0.y]; x <= x_right[y - p0.y]; x++) {
-      pixel(x, y, color);
+      pixel(
+        translation.x + x,
+        translation.y + y,
+        shader_function(vec2d(x / maxX, y / maxY), ...shader_inputs)
+      );
     }
   }
 }
@@ -175,5 +281,7 @@ function _INTERNAL_INTERPOLATE(i0, d0, i1, d1) {
   return values;
 }
 
-setup();
-render();
+window.addEventListener("load", function () {
+  setup();
+  requestAnimationFrame(render);
+});
