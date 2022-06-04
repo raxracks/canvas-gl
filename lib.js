@@ -9,6 +9,8 @@ let canvas_buffer = canvas_context.getImageData(
   canvas.height
 );
 
+let lastTime = Date.now();
+
 Array.prototype.customFill = function (value, start = 0, end = this.length) {
   var count = end - start;
   if (count > 0 && count === Math.floor(count)) {
@@ -77,7 +79,9 @@ function flush() {
 function swap() {
   canvas_context.putImageData(canvas_buffer, 0, 0);
 
-  requestAnimationFrame(render);
+  requestAnimationFrame(() => render((Date.now() - lastTime) / 1000));
+
+  lastTime = Date.now();
 }
 
 function useShader(func) {
@@ -260,6 +264,63 @@ function fillTriangle(p0, p1, p2) {
         translation.x + x,
         translation.y + y,
         shader_function(vec2d(x / maxX, y / maxY), ...shader_inputs)
+      );
+    }
+  }
+}
+
+function putImageData(p, data) {
+  if (
+    p.x > canvas.width ||
+    p.y > canvas.height ||
+    p.x + data.width < 0 ||
+    p.y + data.height < 0
+  )
+    return;
+  canvas_context.putImageData(data, p.x, p.y);
+}
+
+function fillQuad(pos, size, cache = false) {
+  if (
+    pos.x > canvas.width ||
+    pos.y > canvas.height ||
+    pos.x + size.x < 0 ||
+    pos.y + size.y < 0
+  )
+    return;
+
+  if (cache) {
+    const quadCanvas = document.createElement("canvas");
+    quadCanvas.width = size.x;
+    quadCanvas.height = size.y;
+
+    const quadContext = quadCanvas.getContext("2d");
+
+    for (let x = 0; x < size.x; x++) {
+      for (let y = 0; y < size.y; y++) {
+        let color = shader_function(
+          vec2d(x / size.x, y / size.y),
+          ...shader_inputs
+        );
+
+        quadContext.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+
+        quadContext.fillRect(x, y, 1, 1);
+      }
+    }
+
+    return quadContext.getImageData(0, 0, quadCanvas.width, quadCanvas.height);
+  }
+
+  for (let x = pos.x; x < pos.x + size.x; x++) {
+    for (let y = pos.y; y < pos.y + size.y; y++) {
+      pixel(
+        x,
+        y,
+        shader_function(
+          vec2d((x - pos.x) / size.x, (y - pos.y) / size.y),
+          ...shader_inputs
+        )
       );
     }
   }
