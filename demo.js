@@ -1,6 +1,6 @@
 let texData;
 let quadData;
-let realtime = true;
+let realtime = false;
 let x = 0;
 
 function setup() {
