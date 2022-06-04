@@ -206,6 +206,7 @@ function loadTexture(imgElement, width = undefined, height = undefined) {
   return data;
 }
 
+// https://gabrielgambetta.com/computer-graphics-from-scratch/07-filled-triangles.html
 function fillTriangle(p0, p1, p2) {
   p0.x *= scaling.x;
   p0.y *= scaling.y;
